@@ -21,6 +21,8 @@ var TYPES_STRING = {
     7: "UpgradeController"
 }
 
+var TYPES_STATIC = [2,6,7];
+
 function Task(priority){
     var task = this;
     this.priority = priority;
@@ -30,6 +32,7 @@ function Task(priority){
     this.done = function(creep){
         task.finished = true;
         creep.memory["task"] = -1;
+        creep.memory["taskData"] = {set:false};
         creep.say("Done")
     }
 }
@@ -120,8 +123,40 @@ function CreateCreep(priority, spawn, body){
     this.type = TYPES.CREATECREEP;
     
     this.execute = function(){
-        task.spawn.createCreep(task.body);
+        task.spawn.createCreep(task.body, null, {
+            task: -1,
+            taskData: {set: false}
+        });
     }
+}
+
+function Explore(priority){
+    Task.apply(this, arguments);
+    
+    var task = this;    
+    this.type = TYPES.EXPLORE;
+    
+    this.execute = function(creep){
+        creep.memory["task"] = task.type;
+        var room,exitDir;
+        if (creep.memory.taskData.set){
+            room = creep.memory.taskData.room;
+            exitDir = creep.memory.taskData.exitDirection;
+        }
+        else {
+            //here you need to generate "room"&"exitDirection", be lucky :)
+            var toExplore = [];
+            for (var r in Game.rooms){
+                var rooms = Game.map.describeExits(r);
+                for (var i in rooms)
+                    if (toExplore.indexOf(rooms[i]) == -1)
+                        toExplore.push(rooms[i])
+            }
+            var index = Math.floor(Math.random() * (toExplore.length-1));
+            target = creep.memory.taskData["target"] = toExplore[index].name;            
+        }        
+        creep.move(creep.room.findExitTo(target));
+    }   
 }
 
 function Build(priority, site){
@@ -173,5 +208,6 @@ module.exports = {
     Build: Build,
     UpgradeController: UpgradeController,
     TYPES: TYPES,
-    TYPES_STRING: TYPES_STRING
+    TYPES_STRING: TYPES_STRING,
+    TYPES_STATIC: TYPES_STATIC
 };

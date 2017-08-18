@@ -8,6 +8,7 @@ var ENERGY_CAPACITY = {
 function Observer(){
     var obs = this;
     this.myCreeps = [];
+    this.rooms = [];
     this.creepsByTask = {};
     for (var c in Game.creeps){
         var creep = Game.creeps[c];
@@ -56,6 +57,7 @@ function Observer(){
     this.findAll = function(){
         for (var i in Game.rooms){
             var room = Game.rooms[i];
+            obs.rooms.push(room);
             obs.hostileCreeps = obs.hostileCreeps.concat(room.find(FIND_HOSTILE_CREEPS));
             obs.buildings.my.spawns = obs.buildings.my.spawns.concat(room.find(FIND_MY_SPAWNS));
             obs.buildings.my.structures = obs.buildings.my.structures.concat(room.find(FIND_MY_STRUCTURES));
@@ -110,6 +112,7 @@ function Observer(){
                         
             //dropped resources
             var droppedResources = room.find(FIND_DROPPED_RESOURCES);
+            console.log("Dropped:", droppedResources.length)
             for (var i in droppedResources){
                 var dropped = droppedResources[i];
                 if (dropped.resourceType == RESOURCE_ENERGY)

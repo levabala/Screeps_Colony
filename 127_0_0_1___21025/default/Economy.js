@@ -1,3 +1,4 @@
+require("Prototypes");
 var Module = require("Module");
 var Task = require("Task");
 
@@ -40,7 +41,7 @@ function Economy(){
         function generateTransferTasks(){
             for (var i in ec.observer.myCreeps){
                 var creep = ec.observer.myCreeps[i];
-                if (_.sum(creep.carry) > 0 && creep.memory.task != Task.TYPES.BUILD && creep.memory.task != Task.TYPES.MINE && creep.memory.task != Task.TYPES.UPGRADECONTROLLER)
+                if (_.sum(creep.carry) > 0 && Task.TYPES_STATIC.indexOf(creep.memory.task) == -1)
                     ec.addTask(new Task.Transfer(0.9, creep))
             }
         }
@@ -50,11 +51,18 @@ function Economy(){
             var safeResources = ec.observer.dropped.resources.safe;
             for (var i in safeEnergy){
                 var e = safeEnergy[i];
-                var storage = e.pos.findClosestByPath(ec.observer.buildings.my.energyStorages, {ignoreCreeps: true});
+                var ranges = [];
+                for (var s in ec.observer.buildings.my.energyStorages){
+                    var range = e.pos.getRangeTo(ec.observer.buildings.my.energyStorages);
+                    ranges.push(range);                    
+                }
+                var storage = e.pos.findClosestByRange(ec.observer.buildings.my.energyStorages, {ignoreCreeps: true});                
+
+                var priority = 1;
                 if (storage == null)
-                    continue;
+                    priority = 0.1;
                 
-                ec.addTask(new Task.PickUp(0.8, e));
+                ec.addTask(new Task.PickUp(priority, e));
             }
         }
         
@@ -73,8 +81,7 @@ function Economy(){
             }
         }
         
-        function generateCreateCreepTasks(){
-            console.log(ec.needs.creeps)
+        function generateCreateCreepTasks(){            
             if (ec.needs.creeps > 0)
                 ec.addTask(new Task.CreateCreep(0.5, ec.observer.buildings.my.spawns[0], CREEP_BODY));
         }
@@ -89,30 +96,38 @@ function Economy(){
             
             function extensionsBuild(){
                 var startPos = ec.observer.buildings.my.spawns[0].pos;
-                var place = searchBuildPlace(startPos, conditionFun, 400); //square 20x20
-                
+                var place = searchBuildPlace(startPos, conditionFun, 400); //square 20x20                                
+
                 if (place == null)
                     return;
                 
                 var room = Game.rooms[startPos.roomName];
-                var res = room.createConstructionSite(place.x, place.y, STRUCTURE_EXTENSION);
-                
+                var res = room.createConstructionSite(place.x, place.y, STRUCTURE_EXTENSION);                
+
                 function conditionFun(pos){
                     var positions = [
+                        pos,
                         new RoomPosition(pos.x,pos.y-1,pos.roomName),
                         new RoomPosition(pos.x+1,pos.y,pos.roomName),
                         new RoomPosition(pos.x,pos.y+1,pos.roomName),
                         new RoomPosition(pos.x-1,pos.y,pos.roomName)
                     ];
 
-                    for (var p in positions)
+                    for (var p in positions){
+                        var objs = positions[p].look();
+                        var structs = positions[p].lookFor(LOOK_STRUCTURES).length;
+                        var sources = positions[p].lookFor(LOOK_SOURCES).length;
+                        var sites = positions[p].lookFor(LOOK_CONSTRUCTION_SITES).length;
+                        var minerals = positions[p].lookFor(LOOK_MINERALS).length;
+                        var terrain = positions[p].lookFor(LOOK_TERRAIN);                        
                         if (
-                            positions[p].lookFor(LOOK_STRUCTURES).length != 0 ||
-                            positions[p].lookFor(LOOK_SOURCES).length != 0 ||
-                            positions[p].lookFor(LOOK_CONSTRUCTION_SITES).length != 0 ||
-                            positions[p].lookFor(LOOK_MINERALS).length != 0 ||
-                            positions[p].lookFor(LOOK_TERRAIN) != 'plain') 
+                            structs != 0 ||
+                            sources != 0 ||
+                            sites != 0 ||
+                            minerals != 0 ||
+                            terrain != 'plain') 
                             return false;
+                        }
                     return true;
                 }
             }
@@ -259,10 +274,25 @@ function Economy(){
                 var task = pickUpTasks[i];
                 while(amountMap[task.target.id] > 0 && freeCreeps.length > 0){
                     var closestCreep = task.target.pos.findClosestByPath(freeCreeps, {filter: function(creep){
-                        return capacityMap[creep.id] > 0 && creep.memory.task != Task.TYPES.MINE && creep.memory.task != Task.TYPES.BUILD && creep.memory.task != Task.TYPES.UPGRADECONTROLLER;
+                        return capacityMap[creep.id] > 0 && Task.TYPES_STATIC.indexOf(creep.memory.task) == -1;
                     }});
-                    if (closestCreep == null)
-                        break;
+                    if (closestCreep == null){
+                        var rooms = {};
+                        for (var c in freeCreeps)
+                            if (freeCreeps[c].room.name != task.target.room.name)
+                                rooms[freeCreeps[c].room.name] = freeCreeps[c].room;
+                        var roomsArray = [];
+                        for (var r in rooms)
+                            roomsArray.push(rooms[r]);
+                        var closestRoom = task.target.pos.findClosestRoom(roomsArray);
+                        for (var c in freeCreeps)
+                            if (freeCreeps[c].room.name == closestRoom.name){
+                                closestCreep = freeCreeps[c];                
+                                break;
+                            }        
+                        if (closestCreep == null)
+                            break;
+                    }                     
                     task.execute(closestCreep);
                     var amount = amountMap[task.target.id];
                     amountMap[task.target.id] -= capacityMap[closestCreep.id];
@@ -290,20 +320,36 @@ function Economy(){
                     console.log("no creep")
                     continue;
                 }
-                var closestStorage = task.creep.pos.findClosestByPath(ec.observer.buildings.my.energyStorages, {filter: function(storage){
+                var storages = ec.observer.buildings.my.energyStorages;
+                var closestStorage = task.creep.pos.findClosestByPath(storages, {filter: function(storage){
                     return capacityMap[storage.id] > _.sum(task.creep.carry);
                 }});    
                 if (closestStorage == null){
-                    console.log("no storage")
-                    continue;
+                    var rooms = {};                    
+                    for (var c in storages)
+                        if (storages[c].room.name != task.creep.room.name)
+                            rooms[storages[c].room.name] = storages[c].room;
+                    var roomsArray = [];
+                    for (var r in rooms)
+                        roomsArray.push(rooms[r]);
+                    var closestRoom = task.creep.pos.findClosestRoom(roomsArray);
+                    if (closestRoom == null)
+                        break;
+                    
+                    for (var c in storages)
+                        if (storages[c].room.name == closestRoom.name){
+                            closestStorage = storages[c];                
+                            break;
+                        }        
+                    if (closestStorage == null)
+                        break;
                 }
                 task.execute(closestStorage);
-                capacityMap[closestStorage.id] -= _.sum(task.creep.carry);
-                console.log("capacity left:", capacityMap[closestStorage.id])
+                capacityMap[closestStorage.id] -= _.sum(task.creep.carry);                
                 
                 bookCreep(task.creep);
                 counter++;
-            }
+            }            
             return counter;
         }
         
@@ -389,7 +435,7 @@ function Economy(){
         var need = ec.observer.totalEnergy - ec.observer.totalCapacity + ENERGY_CAPACITY_BUFFER;
         if (need < 0) need = 0
         return need;
-    }
+    }            
 }
 
 module.exports = Economy;
