@@ -42,6 +42,12 @@ function Task(priority){
     }
 }
 
+function resetAllTasks(creeps){    
+    var doner = new Task();
+    for (var c in creeps)
+        doner.done(creeps[c]);
+}
+
 function Transfer(priority, creep){
     Task.apply(this, arguments);
     
@@ -49,13 +55,34 @@ function Transfer(priority, creep){
     this.creep = creep;
     this.type = TYPES.TRANSFER;
     
-    this.execute = function(target){
+    this.execute = function(t){
+        var target = t;
         task.creep.memory["task"] = task.type;
-        task.creep.moveTo(target);
+        task.creep.memory["taskData"]["targetId"] = target.id;        
+        var res = task.creep.moveTo(target.pos)
+        //console.log("transfer",res,t.pos)
+        if (res == -2){
+            var exitDir = Game.map.findExit(task.creep.room, target.room);
+            var exit = task.creep.pos.findClosestByRange(exitDir); 
+            task.creep.moveTo(exit);
+        }
+        
+        var nearCreep = _.find(task.creep.room.find(FIND_MY_CREEPS), function(creep){
+            var condition = 
+                creep.memory.task == task.type && 
+                creep.carryCapacity - _.sum(creep.carry) > _.sum(task.creep.carry) &&
+                creep.memory.taskData.targetId == target.id &&
+                creep.pos.getRangeTo(target.pos) < task.creep.pos.getRangeTo(target.pos) 
+            return condition;
+        }); 
+
+        if (nearCreep != null)
+            target = nearCreep;        
+
         var res = task.creep.transfer(target, RESOURCE_ENERGY)
         if (res == 0)
-            task.done(task.creep);
-            
+            task.done(task.creep);                
+
         if (SAY) creep.say("Transfer")
     }
 }
@@ -92,11 +119,18 @@ function Mine(priority, target){
     this.type = TYPES.MINE;
     
     this.execute = function(creep){
-        creep.memory["task"] = task.type;
-        if (!creep.pos.isNearTo(target))
-            creep.moveTo(target);
+        creep.memory["task"] = task.type;            
+        var isNear = creep.pos.isNearTo(target.pos);        
+        if (!isNear){            
+            if (creep.moveTo(task.target.pos) == -2){
+                var exitDir = Game.map.findExit(creep.room, target.room);
+                var exit = creep.pos.findClosestByRange(exitDir); 
+                creep.moveTo(exit);
+            }
+        }
         else {
-            if (creep.harvest(target) == ERR_NOT_ENOUGH_RESOURCES)
+            var res = creep.harvest(task.target);               
+            if (res == ERR_NOT_ENOUGH_RESOURCES)
                 done(creep);
             else creep.drop(RESOURCE_ENERGY);
         }
@@ -179,8 +213,7 @@ function Explore(priority){
         }
 
         var exit;
-        if (creep.room.name == nearRoomName){
-            var exits = Game.map.describeExits(creep.room.name);       
+        if (creep.room.name == nearRoomName){                   
             exitDir = Game.map.findExit(creep.room.name, targetRoomName);
             exit = creep.pos.findClosestByRange(exitDir);            
         }
@@ -236,6 +269,7 @@ function UpgradeController(priority, controller){
 }
 
 module.exports = {
+    resetAllTasks: resetAllTasks,
     Transfer: Transfer,
     Move: Move,
     Mine: Mine,

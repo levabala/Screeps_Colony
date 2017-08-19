@@ -9,9 +9,9 @@ var Reserver = require("Reserver");
 
 var observer = new Observer();
 var restrictData = new RestrictData();
-var reserver = new Reserver(observer, restrictData);
-var economy = new Economy(observer, restrictData);
-var combat = new Combat(observer, restrictData);
+var reserver = new Reserver(observer, restrictData, "reserver");
+var economy = new Economy(observer, restrictData, "economy");
+var combat = new Combat(observer, restrictData, "combat");
 
 observer.findAll();
 console.log("Observer:")
@@ -29,7 +29,7 @@ console.log("Tasks:")
 for (var type in economy.tasks)
     console.log('\t'+Task.TYPES_STRING[type] + ":", economy.tasksInProccess[type] + '/' + economy.tasks[type].length)
 
-
+economy.saveMemory();
 
 //now visualize
 //reserver.visualizeData();
