@@ -13,11 +13,18 @@ function Economy(){
         energy: 0,
         energyCapacity: 0,
         creeps: 0,
+        explore: 1
     }
     
     this.generateTasks = function(){
         calculateNeeds();
         
+        console.log("Needs:")
+        console.log("\tCreep:", ec.needs.creeps);
+        console.log("\tExplore:", ec.needs.explore);
+        console.log("\tEnergyCapacity:", ec.needs.energyCapacity);
+        console.log("\tEnergy:", ec.needs.energy);
+
         var capacityMap = [];
         for (var i in ec.observer.buildings.my.energyStorages){
             var storage = ec.observer.buildings.my.energyStorages[i];
@@ -30,7 +37,13 @@ function Economy(){
         generateTransferTasks();
         generateMineTasks();
         generateCreateCreepTasks();
+        generateExploreTasks();
         
+        function generateExploreTasks(){
+            for (var e = 0; e < ec.needs.explore; e++)
+                ec.addTask(new Task.Explore(0.1));
+        }
+
         function generateUpgradeControllerTasks(){
             for (var c in ec.observer.buildings.my.controllers){
                 var controller = ec.observer.buildings.my.controllers[c];
@@ -72,9 +85,11 @@ function Economy(){
                 var s = sources[i];
                 var freeCells = 0;
                 for (var x = -1; x <= 1; x++)
-                    for (var y = -1; y <= 1; y++)
-                        if (new RoomPosition(s.pos.x + x, s.pos.y + y, s.room.name).lookFor(LOOK_TERRAIN) == 'plain')
+                    for (var y = -1; y <= 1; y++){
+                        var pos = new RoomPosition(s.pos.x + x, s.pos.y + y, s.room.name)
+                        if (pos.lookFor(LOOK_TERRAIN) == 'plain' || pos.lookFor(LOOK_TERRAIN) == 'swamp')
                             freeCells++;
+                    }
                 
                 for (var c = 0; c < freeCells; c++)
                     ec.addTask(new Task.Mine(0.5, s))
@@ -215,6 +230,7 @@ function Economy(){
         var c4 = performMineTasks();
         var c5 = performBuildTasks();
         var c6 = performUpgradeControllerTasks();
+        var c7 = performExploreTasks();
             
         ec.tasksInProccess[Task.TYPES.CREATECREEP] += c1;
         ec.tasksInProccess[Task.TYPES.PICKUP] += c2;
@@ -222,8 +238,10 @@ function Economy(){
         ec.tasksInProccess[Task.TYPES.MINE] += c4;
         ec.tasksInProccess[Task.TYPES.BUILD] += c5;
         ec.tasksInProccess[Task.TYPES.UPGRADECONTROLLER] += c6;
+        ec.tasksInProccess[Task.TYPES.EXPLORE] += c7;
         
         for (var c in freeCreeps){
+            ec.tasksInProccess[Task.TYPES.TASK]++;  
             freeCreeps[c].memory.task = -1;
             freeCreeps[c].say("Nothing")
             
@@ -235,6 +253,30 @@ function Economy(){
             if (index != -1)
                 freeCreeps.splice(index, 1)
         }
+
+        function performExploreTasks(){
+            var exploreTasks = ec.tasks[Task.TYPES.EXPLORE];
+            var counter = 0;
+            for (var i in exploreTasks){
+                var task = exploreTasks[i];
+                var explorers = _.filter(freeCreeps, function(creep){
+                    return creep.memory.task == Task.TYPES.EXPLORE;
+                });
+                var creep;
+                if (explorers.length)
+                    creep = explorers[0];
+                else {
+                    var index = Math.floor(Math.random() * (freeCreeps.length-1));
+                    creep = freeCreeps[index];
+                }
+                if (creep == null)
+                    return counter;
+                task.execute(creep);
+                bookCreep(creep);
+                counter++;
+            }
+            return counter;
+        }
         
         function performMineTasks(){
             var mineTasks = ec.tasks[Task.TYPES.MINE];
@@ -242,8 +284,25 @@ function Economy(){
             for (var i in mineTasks){
                 var task = mineTasks[i];
                 var closestCreep = task.target.pos.findClosestByPath(freeCreeps);
-                if (closestCreep == null)
-                    continue;
+                if (closestCreep == null){
+                    var rooms = {};
+                    for (var c in freeCreeps)
+                        if (freeCreeps[c].room.name != task.target.room.name)
+                            rooms[freeCreeps[c].room.name] = freeCreeps[c].room;
+                    var roomsArray = [];
+                    for (var r in rooms)
+                        roomsArray.push(rooms[r]);
+                    var closestRoom = task.target.pos.findClosestRoom(roomsArray);
+                    if (closestRoom == null)
+                        break;
+                    for (var c in freeCreeps)
+                        if (freeCreeps[c].room.name == closestRoom.name){
+                            closestCreep = freeCreeps[c];                
+                            break;
+                        }
+                    if (closestCreep == null)
+                        continue;
+                }
                 task.execute(closestCreep);
                 bookCreep(closestCreep);
                 counter++;
@@ -272,27 +331,41 @@ function Economy(){
             var counter = 0;
             for (var i in pickUpTasks){
                 var task = pickUpTasks[i];
+                var goodCreeps = freeCreeps;
                 while(amountMap[task.target.id] > 0 && freeCreeps.length > 0){
-                    var closestCreep = task.target.pos.findClosestByPath(freeCreeps, {filter: function(creep){
+                    goodCreeps = _.filter(freeCreeps, function(creep){
                         return capacityMap[creep.id] > 0 && Task.TYPES_STATIC.indexOf(creep.memory.task) == -1;
-                    }});
+                    });
+                    var closestCreep = task.target.pos.findClosestByPath(goodCreeps);                    
                     if (closestCreep == null){
                         var rooms = {};
-                        for (var c in freeCreeps)
-                            if (freeCreeps[c].room.name != task.target.room.name)
-                                rooms[freeCreeps[c].room.name] = freeCreeps[c].room;
+                        for (var c in goodCreeps)
+                            if (goodCreeps[c].room.name != task.target.room.name)
+                                rooms[goodCreeps[c].room.name] = goodCreeps[c].room;
                         var roomsArray = [];
                         for (var r in rooms)
                             roomsArray.push(rooms[r]);
                         var closestRoom = task.target.pos.findClosestRoom(roomsArray);
-                        for (var c in freeCreeps)
-                            if (freeCreeps[c].room.name == closestRoom.name){
-                                closestCreep = freeCreeps[c];                
-                                break;
-                            }        
-                        if (closestCreep == null)
+                        if (closestRoom == null)
                             break;
+                        var closestRoomCreeps = _.filter(goodCreeps, function(creep){
+                            return creep.room.name = closestRoom.name
+                        })
+                        var alreadyLinkedIndex = _.filter(closestRoomCreeps, function(creep){
+                            return creep.memory.task == Task.TYPES.PICKUP && creep.memory.task.taskData.lastTargetId == task.target.id;
+                        });
+                        if (alreadyLinkedIndex != -1)
+                            closestCreep = closestRoomCreeps[alreadyLinkedIndex];
+                        else
+                            for (var c in goodCreeps)
+                                if (goodCreeps[c].room.name == closestRoom.name){
+                                    closestCreep = goodCreeps[c];                
+                                    break;
+                                }        
+                        if (closestCreep == null)
+                            break;                        
                     }                     
+                    console.log(task.target.id, closestCreep)
                     task.execute(closestCreep);
                     var amount = amountMap[task.target.id];
                     amountMap[task.target.id] -= capacityMap[closestCreep.id];
@@ -335,7 +408,7 @@ function Economy(){
                     var closestRoom = task.creep.pos.findClosestRoom(roomsArray);
                     if (closestRoom == null)
                         break;
-                    
+
                     for (var c in storages)
                         if (storages[c].room.name == closestRoom.name){
                             closestStorage = storages[c];                
@@ -343,7 +416,7 @@ function Economy(){
                         }        
                     if (closestStorage == null)
                         break;
-                }
+                }                
                 task.execute(closestStorage);
                 capacityMap[closestStorage.id] -= _.sum(task.creep.carry);                
                 

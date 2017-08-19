@@ -15,6 +15,7 @@ var combat = new Combat(observer, restrictData);
 
 observer.findAll();
 console.log("Observer:")
+console.log("\tDropped:", observer.dropped.energy.safe.length + "/" + observer.dropped.energy.safeTotal);
 console.log("\tEnergy:", observer.totalEnergy);
 console.log("\tCapacity:", observer.totalCapacity);
 console.log("\tCapacityPending:", observer.totalCapacityPending);

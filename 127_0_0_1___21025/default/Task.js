@@ -7,10 +7,12 @@ var TYPES = {
     STORE: 4,
     PICKUP: 5,
     BUILD: 6,
-    UPGRADECONTROLLER: 7
+    UPGRADECONTROLLER: 7,
+    EXPLORE: 8
 }
 
 var TYPES_STRING = {
+    "-1": "Idle",
     0: "Transfer",
     1: "Move",
     2: "Mine",
@@ -18,10 +20,13 @@ var TYPES_STRING = {
     4: "Store",
     5: "PickUp",
     6: "Build",
-    7: "UpgradeController"
+    7: "UpgradeController",
+    8: "Explore"
 }
 
-var TYPES_STATIC = [2,6,7];
+var SAY = false;
+
+var TYPES_STATIC = [2,6,7,8];
 
 function Task(priority){
     var task = this;
@@ -33,7 +38,7 @@ function Task(priority){
         task.finished = true;
         creep.memory["task"] = -1;
         creep.memory["taskData"] = {set:false};
-        creep.say("Done")
+        if (SAY) creep.say("Done")
     }
 }
 
@@ -51,7 +56,7 @@ function Transfer(priority, creep){
         if (res == 0)
             task.done(task.creep);
             
-        creep.say("Transfer")
+        if (SAY) creep.say("Transfer")
     }
 }
 
@@ -64,18 +69,18 @@ function PickUp(priority, target){
     
     this.execute = function(creep){
         creep.memory["task"] = task.type;
-        creep.moveTo(task.target, {
-            visualizePathStyle: {
-                    fill: 'transparent',
-                    stroke: '#fff',
-                    lineStyle: 'dashed',
-                    strokeWidth: .15,
-                    opacity: .1
-                }
-        });
+        creep.memory.taskData["lastTargetId"] = task.target.id;
+        if (creep.room.name == task.target.room.name)
+            creep.moveTo(task.target);
+        else {
+            var exitDir = Game.map.findExit(creep.room, task.target.room);
+            var exit = creep.pos.findClosestByRange(exitDir);
+            creep.moveTo(exit);
+        }
+
         if (creep.pickup(task.target) == 0)
             task.done(creep);
-    creep.say("PickUp")
+        if (SAY) creep.say("PickUp")
     }
 }
 
@@ -95,7 +100,7 @@ function Mine(priority, target){
                 done(creep);
             else creep.drop(RESOURCE_ENERGY);
         }
-        creep.say("Mine")
+        if (SAY) creep.say("Mine")
     }
 }
 
@@ -138,24 +143,57 @@ function Explore(priority){
     
     this.execute = function(creep){
         creep.memory["task"] = task.type;
-        var room,exitDir;
+        var nearRoomName,targetRoomName,exitDir,stayTimer;
         if (creep.memory.taskData.set){
-            room = creep.memory.taskData.room;
-            exitDir = creep.memory.taskData.exitDirection;
+            nearRoomName = creep.memory.taskData.nearRoomName;
+            targetRoomName = creep.memory.taskData.targetRoomName;
+            exitDir = creep.memory.taskData.exitDir;             
+            stayTimer = creep.memory.taskData.stayTimer;
         }
-        else {
-            //here you need to generate "room"&"exitDirection", be lucky :)
+        else {            
             var toExplore = [];
             for (var r in Game.rooms){
                 var rooms = Game.map.describeExits(r);
                 for (var i in rooms)
-                    if (toExplore.indexOf(rooms[i]) == -1)
-                        toExplore.push(rooms[i])
+                    toExplore.push({
+                        nearRoomName: r,
+                        targetRoomName: rooms[i],
+                        exitDir: i
+                    });    
             }
             var index = Math.floor(Math.random() * (toExplore.length-1));
-            target = creep.memory.taskData["target"] = toExplore[index].name;            
+            var explore = toExplore[index];
+            nearRoomName = creep.memory['taskData']['nearRoomName'] = explore.nearRoomName;            
+            targetRoomName = creep.memory['taskData']['targetRoomName'] = explore.targetRoomName;            
+            exitDir = creep.memory['taskData']['exitDir'] = explore.exitDir;
+            stayTimer = creep.memory['taskData']['stayTimer'] = 50;
+            creep.memory.taskData.set = true;            
         }        
-        creep.move(creep.room.findExitTo(target));
+        if (creep.room.name == targetRoomName || !Game.rooms[nearRoomName]){            
+            if (stayTimer <= 0)
+                task.done(creep);
+            //else console.log("STAY", stayTimer)
+            stayTimer--;
+            creep.memory['taskData']['stayTimer'] = stayTimer;
+            return;
+        }
+
+        var exit;
+        if (creep.room.name == nearRoomName){
+            var exits = Game.map.describeExits(creep.room.name);       
+            exitDir = Game.map.findExit(creep.room.name, targetRoomName);
+            exit = creep.pos.findClosestByRange(exitDir);            
+        }
+        else {
+            exit = creep.pos.findClosestByRange(creep.room.findExitTo(Game.rooms[nearRoomName]));            
+        }
+        creep.moveTo(exit);
+        /*console.log("room:", creep.room.name);
+        console.log("targetRoom:", targetRoomName);
+        console.log("nearRoom:", nearRoomName);
+        console.log("exitDir", exitDir)
+        console.log("exit", exit)*/
+        if (SAY) creep.say("Explore")
     }   
 }
 
@@ -169,13 +207,12 @@ function Build(priority, site){
     this.execute = function(creep){
         creep.memory["task"] = task.type; 
         if (creep.pos.isNearTo(task.site.pos)){
-            var res = creep.build(site);
-            console.log(res)
+            var res = creep.build(site);            
             if (res != 0)
                 task.done(creep);
         }
         else creep.moveTo(site.pos);
-        creep.say("Build")
+        if (SAY) creep.say("Build")
     }
 }
 
@@ -189,13 +226,12 @@ function UpgradeController(priority, controller){
     this.execute = function(creep){
         creep.memory["task"] = task.type;
         if (creep.pos.isNearTo(task.controller.pos)){
-            var res = creep.upgradeController(task.controller);
-            console.log(res)
+            var res = creep.upgradeController(task.controller);            
             if (res != 0)
                 task.done();
         }
         else creep.moveTo(task.controller);
-        creep.say("Controller")
+        if (SAY) creep.say("Controller")
     }
 }
 
@@ -207,6 +243,7 @@ module.exports = {
     PickUp: PickUp,
     Build: Build,
     UpgradeController: UpgradeController,
+    Explore: Explore,
     TYPES: TYPES,
     TYPES_STRING: TYPES_STRING,
     TYPES_STATIC: TYPES_STATIC

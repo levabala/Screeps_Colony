@@ -43,7 +43,9 @@ function Observer(){
     this.dropped = {
         energy: {
             safe: [],
-            dangerous: []
+            dangerous: [],
+            safeTotal: 0,
+            dangerousTotal: 0
         },
         resources: {
             safe: [],
@@ -112,12 +114,14 @@ function Observer(){
                         
             //dropped resources
             var droppedResources = room.find(FIND_DROPPED_RESOURCES);
-            console.log("Dropped:", droppedResources.length)
+            //console.log("Dropped:", droppedResources.length)
             for (var i in droppedResources){
                 var dropped = droppedResources[i];
                 if (dropped.resourceType == RESOURCE_ENERGY)
-                    if (isSafe(dropped.pos))
+                    if (isSafe(dropped.pos)){
                         obs.dropped.energy.safe.push(dropped);
+                        obs.dropped.energy.safeTotal += dropped.amount;
+                    }
                     else
                         obs.dropped.energy.dangerous.push(dropped);
                 else         
