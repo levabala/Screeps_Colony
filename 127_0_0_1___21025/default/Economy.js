@@ -1,8 +1,11 @@
 require("Prototypes");
 var Module = require("Module");
-var Task = require("Task");
+var Task = require("Task"); 
 
-function Economy(){
+function Economy(){    
+    Game.startCPURecord("economy_init")
+    Game.detailedCPU["Economy"] = {};
+
     Module.apply(this, arguments);
     var ec = this;
     
@@ -22,10 +25,14 @@ function Economy(){
     else tasksResetCooldown = 0;
     
     this.saveMemory = function(){
+        Game.startCPURecord("economy_save_memory")
         ec.memory["tasksResetCooldown"] = tasksResetCooldown;
+        var cpu = Game.endCPURecord("economy_save_memory");
+        Game.detailedCPU["Economy"]["MemorySaving"] = cpu;
     }
 
     this.generateTasks = function(){
+        Game.startCPURecord("economy_generate_tasks");
         calculateNeeds();
         
         console.log("Needs:")
@@ -234,9 +241,12 @@ function Economy(){
                 }
             }
         }
+        var cpu = Game.endCPURecord("economy_generate_tasks");
+        Game.detailedCPU["Economy"]["TasksGenerating"] = cpu;
     }
     
     this.performTasks = function(){
+        Game.startCPURecord("economy_perform_tasks");
         for (var t in ec.tasks)
             ec.tasks[t].sort(function(t1, t2){
                 if (t1.priority > t2.priority)
@@ -516,6 +526,8 @@ function Economy(){
             }
             return counter;
         }
+        var cpu = Game.endCPURecord("economy_perform_tasks");
+        Game.detailedCPU["Economy"]["TasksPerforming"] = cpu;
     }
     
     function calculateNeeds(){
@@ -537,6 +549,9 @@ function Economy(){
         if (need < 0) need = 0
         return need;
     }            
+
+    var cpu = Game.endCPURecord("economy_init");
+    Game.detailedCPU["Economy"]["Init"] = cpu;
 }
 
 module.exports = Economy;

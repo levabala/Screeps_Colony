@@ -39,3 +39,41 @@ RoomPosition.prototype.findClosestRoom = function(){
     });    
     return distances[0].room;
 }
+
+Game.CPURecords = {};
+Game.startCPURecord = function(id){
+    Game.CPURecords[id] = Game.cpu.getUsed();
+}
+Game.endCPURecord = function(id){
+    var nowCPU = Game.cpu.getUsed();
+    return nowCPU - Game.CPURecords[id];
+}
+Game.detailedCPU = {};
+Game.printDetailedCPU = function(){
+    var detailed = this.detailedCPU;
+    var tab = '\t';    
+    console.log("Detailed CPU usage:")
+    for (var name in detailed){        
+        var details = detailed[name];        
+        var arr = objectToStringArray(details, tab, 2);   
+        console.log(tab + name + ":");     
+        for (var a in arr)
+            console.log(arr[a]);
+    }
+
+    function objectToStringArray(obj, prefix, deep){
+        var arr= []        
+        for (var o in obj){
+            if (typeof obj[o] == 'object'){
+                arr.push(Array(deep + 1).join(prefix) + o + ":");
+                arr = arr.concat(objectToStringArray(obj[o], prefix, deep+1));
+            }
+            else {
+                if (typeof obj[o] == 'number')
+                    obj[o] = Math.round(obj[o] * 10) / 10;
+                arr.push(Array(deep + 1).join(prefix) + o + ": " + obj[o]);
+            }
+        }        
+        return arr;
+    }
+}
